@@ -1,7 +1,7 @@
-	
+// A simple pong game for the MiST FPGA board
 // (c) 2015 Till Harbaum
 
-// Lesson 1: VGA signal with ball
+// Lesson 2: Moving Ball
 
 module pong (
    input [1:0] CLOCK_27,
@@ -30,11 +30,36 @@ reg[9:0]  v_cnt;        // Vertical pixel counter
 // Disable the unused SDRAM
 assign SDRAM_nCS = 1;
 
+localparam BORDER     = 8;    // Height of upper / lower edge
 localparam BALL_SIZE  = 16;   // Width and height of the ball
+localparam BALL_SPEED = 4;    // Step of the ball per V-Sync
 
 // Ball starts at the center of the visible screen area
 reg [9:0] ball_x = HS + HBP + (H - BALL_SIZE)/2;
 reg [9:0] ball_y = VS + VBP + (V - BALL_SIZE)/2;
+
+// Movement direction of the ball
+reg ball_move_x = 1'b1;
+reg ball_move_y = 1'b1;
+
+// Calculate new ball position for each VSync
+always@(posedge VGA_VS) begin
+	// Change the horizontal movement when the edge is reached
+	if(ball_x <  HS+HBP)                    ball_move_x <= 1'b1;
+	if(ball_x >= HS+HBP+H-BALL_SIZE)        ball_move_x <= 1'b0;
+	
+	// Horizontal ball movement
+	if(ball_move_x) ball_x <= ball_x + BALL_SPEED;
+	else            ball_x <= ball_x - BALL_SPEED;
+
+	// Change the vertical movement when the edge is reached
+	if(ball_y <  VS+VBP+BORDER)             ball_move_y <= 1'b1;
+	if(ball_y >= VS+VBP+V-BORDER-BALL_SIZE) ball_move_y <= 1'b0;
+	
+	// Vertical ball movement
+	if(ball_move_y) ball_y <= ball_y + BALL_SPEED;
+	else            ball_y <= ball_y - BALL_SPEED;
+end
 
 // Both counters start with the start of the sync pulse
 
@@ -63,7 +88,14 @@ end
 wire ball = (h_cnt >= ball_x) && (h_cnt < ball_x + BALL_SIZE) &&
 				(v_cnt >= ball_y) && (v_cnt < ball_y + BALL_SIZE);
 
-wire pixel = ball;
+// Upper and lower edges are drawn: electron beam is located
+// in the horizontal playing field and either within the upper
+// Border or the bottom 
+wire border = (h_cnt >= HS+HBP) && (h_cnt < HS+HBP+H) &&
+				 (((v_cnt >= VS+VBP)          && (v_cnt < VS+VBP+BORDER)) ||
+				  ((v_cnt >= VS+VBP+V-BORDER) && (v_cnt < VS+VBP+V)));
+						
+wire pixel = ball || border;
 
 // White, if "pixel" otherwise black
 assign VGA_R = pixel?6'b111111:6'b000000;
